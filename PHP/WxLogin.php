@@ -9,11 +9,15 @@ class WxLogin
     private $index;
 
     private $_apis = [
-        'home'   => 'https://mp.weixin.qq.com',
-        'login'  => 'https://mp.weixin.qq.com/cgi-bin/bizlogin?action=startlogin',
-        'qrcode' => 'https://mp.weixin.qq.com/cgi-bin/loginqrcode?action=getqrcode&param=4300&rd=120',
-        'auth'   => 'https://mp.weixin.qq.com/cgi-bin/loginauth?action=ask&token=&lang=zh_CN&f=json&ajax=1'
+        'home'        => 'https://mp.weixin.qq.com',
+        'start_login' => 'https://mp.weixin.qq.com/cgi-bin/bizlogin?action=startlogin',
+        'qrcode'      => 'https://mp.weixin.qq.com/cgi-bin/loginqrcode?action=getqrcode&param=4300&rd=120',
+        'login_ask'   => 'https://mp.weixin.qq.com/cgi-bin/loginqrcode?action=ask&token=&lang=zh_CN&f=json&ajax=1&random=',
+        'login_auth'  => 'https://mp.weixin.qq.com/cgi-bin/loginauth?action=ask&token=&lang=zh_CN&f=json&ajax=1',
+        'login'       => 'https://mp.weixin.qq.com/cgi-bin/bizlogin?action=login&lang=zh_CN'
     ];
+
+    private $_redirect_url;
 
     private function _getCookieFile()
     {
@@ -27,19 +31,24 @@ class WxLogin
 
     private function _qrName()
     {
-        return "qrcode_{$this->index}.png";
+        return "qrcode_".$this->index.".png";
     }
 
     private function _log($msg)
     {
         $msg = is_array($msg) ? json_encode($msg) : $msg;
         $filename = date('Y-m-d').'.log';
-        $path = dirname(__FILE__).'/logs/WxLogin/';
-        if (!is_dir($path)) @mkdir(dirname($path.$filename), 0777);
+        $path = dirname(__FILE__).'/WxLogin/';
+        $this->_setPath($path, $filename);
         file_put_contents($path.$filename, '['.date('Y-m-d H:i:s')."] local.INFO: ".$msg."\r\n", FILE_APPEND );
     }
 
-    private function _setToken()
+    private function _setPath($path = '', $filename = '')
+    {
+        if (!is_dir($path)) mkdir(dirname($path.$filename), 0777);
+    }
+
+    private function _setToken($token = '')
     {
 
     }
@@ -51,7 +60,7 @@ class WxLogin
 
     private function _getRandom()
     {
-        return '0.'.mt_rand(1000000000000000, 9999999999999999);
+        return '0.'.mt_rand((int)1000000000000000, (int)9999999999999999);
     }
 
     
@@ -90,28 +99,176 @@ class WxLogin
         }
     }
 
+    public function init($data = [])
+    {
+        // 入参判断
+        if (!isset($data['index']) || !isset($data['username']) || !isset($data['pwd'])) {
+            return ['status' => false, 'msg' => '参数错误!'];
+        }
+        $this->index    = $data['index'];
+        $this->username = $data['username'];
+        $this->pwd      = $data['pwd'];
+        if ($this->_getToken()) {
+            return true;
+        } else {
+            return $this->do_login();
+        }
+    }
+
+    protected function do_login()
+    {
+        // 登陆
+        $login_data = $this->login();
+        if ($login_data['base_resp']['ret'] == 0) {
+
+            // 登陆成功 请求二维码
+            $this->_saveQrCode();
+
+            // 心跳验证
+            $_link  = $this->_apis['login_ask'];
+            $_index = 1;
+
+            // 参数
+            $data = [
+                'cookie_file' => 1,
+                'refer'       => $this->_redirect_url       
+            ];
+
+            while (true) {
+
+                if ($_index > 30) {
+                    break;
+                }
+
+                $result = json_decode($this->_send($_link.$this->_getRandom(), $data), true);
+                $this->_log(json_encode($result));
+
+                // 二维码验证状态
+                // status: 0-未打开 4-打开未扫描 2-打开未授权 1-打开已授权 3-过期
+                $status = $result['status'];
+                if (1 == $status) {
+                    if (2 == $result['user_category']) {
+                        $_link = $this->_apis['login_auth'];
+                    } else {
+                        $this->_log('Login success');
+                        break;
+                    }
+                } elseif (4 == $status) {
+                    $this->_log('已经扫码');
+                } elseif (2 == $status) {
+                    $this->_log('管理员拒绝');
+                    break;
+                } elseif (3 == $status) {
+                    $this->_log('登录超时');
+                    break;
+                } else {
+                    if ($_link == $this->_apis['login_ask']) {
+                        $this->_log('请打开test.jpg，用微信扫码');
+                    } else {
+                        $this->_log('等待确认');
+                    }
+                }
+                sleep(2);
+                ++$_index;
+            }
+
+            if ($_index >= 30){
+                $this->_log("time out!");
+                return ['status' => 0, 'msg' => 'time out!'];
+            }
+
+            $this->_log("start authorized!");
+
+            // 获取token
+            $data['post'] = ['lang' => 'zh_CN', 'f' => 'json', 'ajax' => 1, 'random' => $this->_getRandom(), 'token' => ''];
+            $auth_result = $this->_send($this->_apis['login'], $data);
+            $this->_log($auth_result);
+
+            if ($auth_result['base_resp']['ret'] != 0) {
+                return;
+            }
+
+            //跳转路径
+            $redirect_url = $auth_result['redirect_url'];               
+
+            //获取cookie
+            if (preg_match('/token=([\d]+)/i', $redirect_url, $match)) {
+                $this->_log('验证成功,token: '.$match[1]);
+            }
+
+            return ['status' => 1, 'msg' => 'success!'];
+        } else {
+            return ['status' => $login_data['base_resp']['ret'], 'msg' => $this->_getError($login_data['base_resp']['ret'])];
+        }
+        return $login_data;        
+    }
+
+
+    protected function login()
+    {
+        $data = [
+            'cookie_file' => 1,
+            'post' => [
+                'username' => $this->username,
+                'pwd'      => $this->pwd,
+                'f'        => 'json',
+            ]
+        ];
+        $login_data = json_decode($this->_send($this->_apis['start_login'], $data), true);
+
+        if ($login_data['base_resp']['ret'] == 0) {
+            $this->_redirect_url = $this->_apis['home'].$login_data['redirect_url'];
+        }
+
+        return $login_data;
+    }
+
+
     protected function _saveQrCode()
     {
-
+        $result = $this->_send($this->_apis['qrcode'], ['cookie_file' => 1]);
+        $fp     = fopen($this->_getImgPath(), 'wb+') or die('open fails');
+        fwrite($fp, $result) or die('fwrite fails');
+        fclose($fp);
     }
+
 
     private function _send($url, $data = [])
     {
         $ch = curl_init();
 
-        $agent = array_key_exists('agent', $data) ? $data['agent'] : 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:10.0.2) Gecko/20100101 Firefox/10.0.2';
-
+        $headers = [
+            'User-Agent:Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36',
+            'Referer:https://mp.weixin.qq.com/'
+        ];
 
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_AUTOREFERER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, $agent);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);      
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 0); 
+        curl_setopt($ch, CURLOPT_HEADER, 0); 
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
 
-        if (array_key_exists('post', $data)) {
-            curl_setopt($curl, CURLOPT_POST, 1);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $data['post']);  
+        if (isset($data['post'])) {
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data['post']));  
         }
+
+        if (isset($data['cookie_file'])) {
+            curl_setopt($ch, CURLOPT_COOKIEJAR, $this->_getCookieFile()); 
+            curl_setopt($ch, CURLOPT_COOKIEFILE, $this->_getCookieFile()); 
+        }
+
+        if (isset($data['refer'])) {
+            curl_setopt($ch, CURLOPT_REFERER, $data['refer']);
+        }
+
+        $return = curl_exec($ch);
+        curl_close($ch);
+
+        return $return; 
     }
     
 }
