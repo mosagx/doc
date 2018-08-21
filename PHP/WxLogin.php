@@ -14,14 +14,14 @@ class WxLogin
         'qrcode'      => 'https://mp.weixin.qq.com/cgi-bin/loginqrcode?action=getqrcode&param=4300&rd=120',
         'login_ask'   => 'https://mp.weixin.qq.com/cgi-bin/loginqrcode?action=ask&token=&lang=zh_CN&f=json&ajax=1&random=',
         'login_auth'  => 'https://mp.weixin.qq.com/cgi-bin/loginauth?action=ask&token=&lang=zh_CN&f=json&ajax=1',
-        'login'       => 'https://mp.weixin.qq.com/cgi-bin/bizlogin?action=login&lang=zh_CN'
+        'login'       => 'https://mp.weixin.qq.com/cgi-bin/bizlogin?action=login&lang=zh_CN',
     ];
 
     private $_redirect_url;
 
     private function _getCookieFile()
     {
-        return  dirname(__FILE__).'/cookie/cookie_'.$this->index.'.txt';
+        return  dirname(__FILE__).'/cookie/'.$this->index.'.cookie';
     }
 
     private function _getImgPath()
@@ -31,7 +31,7 @@ class WxLogin
 
     private function _qrName()
     {
-        return "qrcode_".$this->index.".png";
+        return 'qrcode_'.$this->index.'.png';
     }
 
     private function _log($msg)
@@ -40,61 +40,59 @@ class WxLogin
         $filename = date('Y-m-d').'.log';
         $path = dirname(__FILE__).'/WxLogin/';
         $this->_setPath($path, $filename);
-        file_put_contents($path.$filename, '['.date('Y-m-d H:i:s')."] local.INFO: ".$msg."\r\n", FILE_APPEND );
+        file_put_contents($path.$filename, '['.date('Y-m-d H:i:s').'] local.INFO: '.$msg."\r\n", FILE_APPEND);
     }
 
     private function _setPath($path = '', $filename = '')
     {
-        if (!is_dir($path)) mkdir(dirname($path.$filename), 0777);
+        if (!is_dir($path)) {
+            mkdir(dirname($path.$filename), 0777);
+        }
     }
 
     private function _setToken($token = '')
     {
-
     }
 
     private function _getToken()
     {
-
     }
 
     private function _getRandom()
     {
-        return '0.'.mt_rand((int)1000000000000000, (int)9999999999999999);
+        return '0.'.mt_rand((int) 1000000000000000, (int) 9999999999999999);
     }
-
-    
 
     private function _getError($code = 0)
     {
         switch ($code) {
             case '-1':
-                return "系统错误，请稍候再试。";
+                return '系统错误，请稍候再试。';
                 break;
             case '-2':
-                return "帐号或密码错误。";
+                return '帐号或密码错误。';
                 break;
             case '-23':
-                return "您输入的帐号或者密码不正确，请重新输入。";
+                return '您输入的帐号或者密码不正确，请重新输入。';
                 break;
             case '-21':
-                return "不存在该帐户。";
+                return '不存在该帐户。';
                 break;
             case '-7':
-                return "您目前处于访问受限状态。";
+                return '您目前处于访问受限状态。';
                 break;
             case '-26':
-                return "该公众会议号已经过期，无法再登录使用。";
+                return '该公众会议号已经过期，无法再登录使用。';
                 break;
             case '0':
-                return "成功登录，正在跳转...";
+                return '成功登录，正在跳转...';
                 break;
             case '-25':
                 return "海外帐号请在公众平台海外版登录,<a href='http://admin.wechat.com/'>点击登录</a>";
                 break;
-            
+
             default:
-                return "未知错误。";
+                return '未知错误。';
                 break;
         }
     }
@@ -120,22 +118,20 @@ class WxLogin
         // 登陆
         $login_data = $this->login();
         if ($login_data['base_resp']['ret'] == 0) {
-
             // 登陆成功 请求二维码
             $this->_saveQrCode();
 
             // 心跳验证
-            $_link  = $this->_apis['login_ask'];
+            $_link = $this->_apis['login_ask'];
             $_index = 1;
 
             // 参数
             $data = [
                 'cookie_file' => 1,
-                'refer'       => $this->_redirect_url       
+                'refer' => $this->_redirect_url,
             ];
 
             while (true) {
-
                 if ($_index > 30) {
                     break;
                 }
@@ -144,26 +140,24 @@ class WxLogin
                 $this->_log(json_encode($result));
 
                 // 二维码验证状态
-                // status: 0-未打开 4-打开未扫描 2-打开未授权 1-打开已授权 3-过期
-                $status = $result['status'];
+                // status: 0-未打开 4-打开未扫码 2-打开未授权 1-打开已授权 3-过期
+                $status = isset($result['status']) ? $result['status'] : 0;
                 if (1 == $status) {
                     if (2 == $result['user_category']) {
+                        $this->_log('登陆成功！');
+                        break;
                         $_link = $this->_apis['login_auth'];
                     } else {
-                        $this->_log('Login success');
-                        break;
+                        $this->_log('Login error!');
                     }
                 } elseif (4 == $status) {
-                    $this->_log('已经扫码');
-                } elseif (2 == $status) {
-                    $this->_log('管理员拒绝');
-                    break;
+                    $this->_log('打开未扫码或用户未授权');
                 } elseif (3 == $status) {
                     $this->_log('登录超时');
                     break;
                 } else {
                     if ($_link == $this->_apis['login_ask']) {
-                        $this->_log('请打开test.jpg，用微信扫码');
+                        $this->_log('请打开'.$this->_qrName().'，用微信扫码');
                     } else {
                         $this->_log('等待确认');
                     }
@@ -172,37 +166,51 @@ class WxLogin
                 ++$_index;
             }
 
-            if ($_index >= 30){
-                $this->_log("time out!");
+            if ($_index >= 30) {
+                $this->_log('time out!');
+
                 return ['status' => 0, 'msg' => 'time out!'];
             }
 
-            $this->_log("start authorized!");
+            $this->_log('start authorized!');
 
             // 获取token
             $data['post'] = ['lang' => 'zh_CN', 'f' => 'json', 'ajax' => 1, 'random' => $this->_getRandom(), 'token' => ''];
             $auth_result = $this->_send($this->_apis['login'], $data);
             $this->_log($auth_result);
 
+            $auth_result = json_decode($auth_result, true);
             if ($auth_result['base_resp']['ret'] != 0) {
                 return;
             }
 
             //跳转路径
-            $redirect_url = $auth_result['redirect_url'];               
+            $redirect_url = $auth_result['redirect_url'];
 
             //获取cookie
             if (preg_match('/token=([\d]+)/i', $redirect_url, $match)) {
                 $this->_log('验证成功,token: '.$match[1]);
+
+                return $this->test($match[1]);
             }
 
             return ['status' => 1, 'msg' => 'success!'];
         } else {
             return ['status' => $login_data['base_resp']['ret'], 'msg' => $this->_getError($login_data['base_resp']['ret'])];
         }
-        return $login_data;        
+
+        return $login_data;
     }
 
+    protected function test($token = '')
+    {
+        // $link = "https://mp.weixin.qq.com/misc/faq?action=getfaq&lang=zh_CN&f=json&cginame=cgi-bin/home&token=".$token."&t=home/index";
+        $link = "ttps://mp.weixin.qq.com/cgi-bin/appmsgotherinfo?appmsgidlist=2451552932,2451552931,2451552930,2451552925,2451552922,2451552919,2451552916&token={$token}&token={$token}&lang=zh_CN&f=json&ajax=1";
+        $result = $this->_send($link, ['cookie_file' => 1]);
+        $this->_log($result);
+
+        return json_decode($result, true);
+    }
 
     protected function login()
     {
@@ -212,7 +220,7 @@ class WxLogin
                 'username' => $this->username,
                 'pwd'      => $this->pwd,
                 'f'        => 'json',
-            ]
+            ],
         ];
         $login_data = json_decode($this->_send($this->_apis['start_login'], $data), true);
 
@@ -223,7 +231,6 @@ class WxLogin
         return $login_data;
     }
 
-
     protected function _saveQrCode()
     {
         $result = $this->_send($this->_apis['qrcode'], ['cookie_file' => 1]);
@@ -232,33 +239,32 @@ class WxLogin
         fclose($fp);
     }
 
-
     private function _send($url, $data = [])
     {
         $ch = curl_init();
 
         $headers = [
             'User-Agent:Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36',
-            'Referer:https://mp.weixin.qq.com/'
+            'Referer:https://mp.weixin.qq.com/',
         ];
 
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_AUTOREFERER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);      
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 0); 
-        curl_setopt($ch, CURLOPT_HEADER, 0); 
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 0);
+        curl_setopt($ch, CURLOPT_HEADER, 0);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
 
         if (isset($data['post'])) {
             curl_setopt($ch, CURLOPT_POST, 1);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data['post']));  
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data['post']));
         }
 
         if (isset($data['cookie_file'])) {
-            curl_setopt($ch, CURLOPT_COOKIEJAR, $this->_getCookieFile()); 
-            curl_setopt($ch, CURLOPT_COOKIEFILE, $this->_getCookieFile()); 
+            curl_setopt($ch, CURLOPT_COOKIEJAR, $this->_getCookieFile());
+            curl_setopt($ch, CURLOPT_COOKIEFILE, $this->_getCookieFile());
         }
 
         if (isset($data['refer'])) {
@@ -268,7 +274,6 @@ class WxLogin
         $return = curl_exec($ch);
         curl_close($ch);
 
-        return $return; 
+        return $return;
     }
-    
 }
