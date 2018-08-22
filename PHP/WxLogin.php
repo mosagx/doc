@@ -52,10 +52,12 @@ class WxLogin
 
     private function _setToken($token = '')
     {
+        // 自行设置
     }
 
     private function _getToken()
     {
+        // 日志里
     }
 
     private function _getRandom()
@@ -113,6 +115,9 @@ class WxLogin
         }
     }
 
+    /**
+     * 登陆授权
+     */
     protected function do_login()
     {
         // 登陆
@@ -122,7 +127,7 @@ class WxLogin
             $this->_saveQrCode();
 
             // 心跳验证
-            $_link = $this->_apis['login_ask'];
+            $_link  = $this->_apis['login_ask'];
             $_index = 1;
 
             // 参数
@@ -191,7 +196,7 @@ class WxLogin
             if (preg_match('/token=([\d]+)/i', $redirect_url, $match)) {
                 $this->_log('验证成功,token: '.$match[1]);
 
-                return $this->test($match[1]);
+                // return $this->test($match[1]);
             }
 
             return ['status' => 1, 'msg' => 'success!'];
@@ -202,16 +207,22 @@ class WxLogin
         return $login_data;
     }
 
-    protected function test($token = '')
+    /**
+     * 测试请求
+     */
+    public function get($link = '', $token = '', $index)
     {
-        // $link = "https://mp.weixin.qq.com/misc/faq?action=getfaq&lang=zh_CN&f=json&cginame=cgi-bin/home&token=".$token."&t=home/index";
-        $link = "ttps://mp.weixin.qq.com/cgi-bin/appmsgotherinfo?appmsgidlist=2451552932,2451552931,2451552930,2451552925,2451552922,2451552919,2451552916&token={$token}&token={$token}&lang=zh_CN&f=json&ajax=1";
+        $this->index = $index;
+        $link   = $link."&token=".$token;
         $result = $this->_send($link, ['cookie_file' => 1]);
         $this->_log($result);
 
-        return json_decode($result, true);
+        return $result;
     }
 
+    /**
+     * 登陆验证
+     */
     protected function login()
     {
         $data = [
@@ -231,6 +242,9 @@ class WxLogin
         return $login_data;
     }
 
+    /**
+     * 保存二维码
+     */
     protected function _saveQrCode()
     {
         $result = $this->_send($this->_apis['qrcode'], ['cookie_file' => 1]);
@@ -239,6 +253,9 @@ class WxLogin
         fclose($fp);
     }
 
+    /**
+     * Curl请求
+     */
     private function _send($url, $data = [])
     {
         $ch = curl_init();
