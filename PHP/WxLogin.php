@@ -60,7 +60,7 @@ class WxLogin
         // 日志里
     }
 
-    private function _getRandom()
+    public function _getRandom()
     {
         return '0.'.mt_rand((int) 1000000000000000, (int) 9999999999999999);
     }
