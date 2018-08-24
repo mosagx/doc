@@ -152,6 +152,8 @@ class WxLogin
                         $this->_log('登陆成功！');
                         break;
                         $_link = $this->_apis['login_auth'];
+                    } elseif (1 == $result['user_category']) {
+                        $_link = $_apis['auth'];
                     } else {
                         $this->_log('Login error!');
                     }
@@ -171,7 +173,7 @@ class WxLogin
                 ++$_index;
             }
 
-            if ($_index >= 30) {
+            if ($_index >= 60) {
                 $this->_log('time out!');
 
                 return ['status' => 0, 'msg' => 'time out!'];
