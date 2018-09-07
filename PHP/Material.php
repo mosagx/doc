@@ -10,41 +10,27 @@ class Material
         'upload'       => 'https://api.weixin.qq.com/cgi-bin/material/add_material'
     ];
 
-    // 默认素材
-    private $_defaultMat = [
-        'articles' => [
-            'title'              => 'default',
-            "thumb_media_id"     => '1',
-            "author"             => 'system',
-            "digest"             => 'digest',
-            "show_cover_pic"     => 'none',
-            "content"            => 'default content',
-            "content_source_url" => '1'
-        ]
-    ];
-
     // 默认图片
     private $_defaultPic;
-
-    private $media_id;
 
     private $_token;
 
     public function init($token)
     {
-        // return $this->_apis['del_material'];
         $this->_token = $token;
         
         // list
         $material = $this->_list();
-        // if (isset($material['errmsg'])) {
-        //     return $material;
-        // }
+        if (isset($material['errmsg'])) {
+            return $material;
+        }
 
-        // if ($material['item']) {
-        //     return $this->getBiz($material['item'][0]['content']['news_item'][0]['url']);
-        // }
-        // unset($material);
+        if ($material['item']) {
+            return $this->getBiz($material['item'][0]['content']['news_item'][0]['url']);
+        }
+        unset($material);
+
+        // upload images
         $info = $this->_uploadImg();
         if (isset($info['errmsg'])) {
             return $info;
@@ -52,21 +38,19 @@ class Material
 
         // add_news
         $add_result = $this->_add($info['media_id']);
-        return $add_result;
         if (isset($add_result['errmsg'])) {
             return $add_result;
         }
 
-        $this->media_id = $add_result['media_id'];
-
         // get_material
-        $get_result = $this->_get();
+        $get_result = $this->_get($add_result['media_id']);
         if (isset($get_result['errmsg'])) {
             return $get_result;
         }
 
         // del_material
-        // $this->_del();
+        $this->_del($add_result['media_id']);
+        $this->_del($info['media_id']);
 
         return $this->getBiz($get_result['news_item'][0]['url']);
     }
@@ -74,9 +58,9 @@ class Material
     /**
      * 素材获取
      */
-    private function _get()
+    private function _get($media_id)
     {
-        return $this->_send('get_material', ['media_id' => $this->media_id]);
+        return $this->_send('get_material', ['media_id' => $media_id]);
     }
 
     /**
@@ -92,27 +76,29 @@ class Material
     }
 
     /**
-     * 素材添加
+     * 默认添加
      */
     private function _add($media_id)
     {
-        return $this->_send('add_news', [
-                'title'              => 'default',
-                "thumb_media_id"     => $media_id,
-                "author"             => 'system',
-                "digest"             => 'digest',
-                "show_cover_pic"     => 'none',
-                "content"            => 'default content',
-                "content_source_url" => '1'
-        ]);
+        $mat = [];
+        $mat['articles'][] = [
+            'title'              => 'default',
+            "thumb_media_id"     => $media_id,
+            "author"             => 'system',
+            "digest"             => 'digest',
+            "show_cover_pic"     => 1,
+            "content"            => 'default content',
+            "content_source_url" => '1'
+        ];
+        return $this->_send('add_news', $mat);
     }
 
     /**
      * 删除素材
      */
-    private function _del()
+    private function _del($media_id)
     {
-        return $this->_send('del_material', ['media_id' => $this->media_id]);
+        return $this->_send('del_material', ['media_id' => $media_id]);
     }
 
     /**
@@ -130,11 +116,17 @@ class Material
         return isset($result['__biz']) ? $result['__biz'] : '';
     }
 
+    /**
+     * 默认图片
+     */
     private function _defaultImg()
     {
         return dirname(__FILE__).'\default.jpg';
     }
     
+    /**
+     * 默认图片上传
+     */
     private function _uploadImg()
     {
         return $this->_send('upload', [
