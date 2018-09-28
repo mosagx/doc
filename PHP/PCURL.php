@@ -149,7 +149,7 @@ class PCURL
      *
      * @param $file
      */
-    public function setCainfo($file)
+    public function setCaInfo($file)
     {
         curl_setopt($this->ch, CURLOPT_CAINFO, $file);
     }
