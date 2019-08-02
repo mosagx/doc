@@ -1,7 +1,7 @@
 <?php
 
-require 'Creator.php';
-require 'TextProduct.php';
+include_once 'Creator.php';
+include_once 'TextProduct.php';
 
 class TextFactory extends Creator
 {

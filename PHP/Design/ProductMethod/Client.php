@@ -1,7 +1,7 @@
 <?php
 
-require 'TextFactory.php';
-require 'GriphicFactory.php';
+include_once 'TextFactory.php';
+include_once 'GriphicFactory.php';
 
 class Client
 {
@@ -12,8 +12,8 @@ class Client
     {
         $this->someTextProduct = new TextFactory();
         echo $this->someTextProduct->startFactory().'<br />';
-        $this->someGriphicProduct = new GriphicFactory();
-        echo $this->someGriphicProduct->startFactory().'<br />';
+        // $this->someGriphicProduct = new GriphicFactory();
+        // echo $this->someGriphicProduct->startFactory().'<br />';
     }
 }
 
